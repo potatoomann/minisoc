@@ -127,6 +127,18 @@ You should see **AUTH-001** (real brute force) and **AUTH-002** (critical: a rea
 login right after the brute force). The dashboard shows the same alerts live, now driven by
 real `sshd` events instead of the simulator.
 
+**Real attack detected** — output of an actual Hydra brute force against the lab's own SSH,
+caught from live OpenSSH logs:
+
+![Real SSH attack detected](docs/real-attack-detection.png)
+
+```
+ MiniSOC DETECTION SCORECARD
+ AUTH-002  critical   T1078 Valid Accounts         Successful login after brute force  (127.0.0.1)
+ AUTH-001  high   x7  T1110.001 Password Guessing  SSH brute force                     (127.0.0.1)
+ [PASS] AUTH-001   [PASS] AUTH-002   RESULT: attack fully detected
+```
+
 - **`collectors/ssh_collector.py`** reads real sshd events from journald or `/var/log/auth.log`,
   normalises them, and appends to the log MiniSOC tails. Point it at any Linux host's SSH logs.
 - **`lab/attack_lab.sh`** installs `openssh-server` + `hydra`, creates a throwaway `socdemo`
