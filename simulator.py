@@ -133,6 +133,25 @@ SCENARIOS = {
 }
 
 
+class Attacker:
+    """Fires bundled attack scenarios on demand (used by the dashboard's attack panel).
+
+    Each scenario only writes log lines into the same files the engine tails, so there is
+    no shell execution and no real network traffic - just the raw material a detection fires on.
+    """
+
+    def __init__(self, log_dir):
+        self.writer = LogWriter(log_dir, reset=False)
+        self.scenarios = sorted(SCENARIOS)
+
+    def run(self, name):
+        fn = SCENARIOS.get(name)
+        if not fn:
+            return False
+        fn(self.writer)
+        return True
+
+
 def normal_traffic(w):
     choice = random.random()
     if choice < 0.4:

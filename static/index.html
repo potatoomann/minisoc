@@ -47,6 +47,15 @@
   .empty { padding: 14px; color: var(--muted); font-size: 12px; }
   .filters { display: flex; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .attack { grid-column: 1 / -1; display: none; border-color: var(--critical); }
+  .attack h2 { color: var(--critical); display: flex; justify-content: space-between; align-items: center; }
+  .attack .hint { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 11px; }
+  .attack .btns { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px; }
+  .attack button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+    padding: 7px 12px; font-size: 12px; cursor: pointer; transition: background .15s, border-color .15s; }
+  .attack button:hover { border-color: var(--critical); }
+  .attack button:active { background: var(--critical); color: #000; }
+  .attack button.fired { background: var(--critical); color: #000; border-color: var(--critical); }
 </style>
 </head>
 <body>
@@ -62,6 +71,11 @@
     <div class="kpi"><div class="v" id="k-high" style="color:var(--high)">0</div><div class="l">High</div></div>
     <div class="kpi"><div class="v" id="k-open">0</div><div class="l">Open</div></div>
     <div class="kpi"><div class="v" id="k-blocked">0</div><div class="l">IPs blocked</div></div>
+  </section>
+
+  <section class="panel attack" id="attack-panel">
+    <h2>Attack panel <span class="hint">lab only — fires a simulated attack, then watch it get detected</span></h2>
+    <div class="btns" id="attack-btns"></div>
   </section>
 
   <section class="panel">
@@ -191,6 +205,35 @@ async function refreshBlocked() {
 let statsTimer = null;
 function scheduleStats() { clearTimeout(statsTimer); statsTimer = setTimeout(() => refreshStats().catch(() => {}), 300); }
 
+const ATTACK_LABELS = {
+  brute_force: "SSH brute force", sql_injection: "SQL injection", path_traversal: "Path traversal",
+  xss: "XSS", dir_scan: "Directory scan", encoded_powershell: "Encoded PowerShell",
+  certutil_download: "Certutil download", credential_dump: "Credential dump (Mimikatz)",
+  shadow_delete: "Delete shadow copies", discovery: "Host discovery", new_user: "Create new user",
+};
+
+async function fireAttack(scenario, btn) {
+  btn.disabled = true; btn.classList.add("fired");
+  try {
+    await fetch("/api/attack", { method: "POST", headers: { "Content-Type": "application/json" },
+                                 body: JSON.stringify({ scenario }) });
+  } catch (_) {}
+  setTimeout(() => { btn.classList.remove("fired"); btn.disabled = false; }, 700);
+}
+
+async function loadAttackPanel() {
+  let info;
+  try { info = await getJSON("/api/attacks"); } catch (_) { return; }
+  if (!info.enabled || !info.scenarios.length) return;
+  const box = $("attack-btns"); box.replaceChildren();
+  for (const s of info.scenarios) {
+    const b = el("button", "", ATTACK_LABELS[s] || s);
+    b.addEventListener("click", () => fireAttack(s, b));
+    box.appendChild(b);
+  }
+  $("attack-panel").style.display = "block";
+}
+
 function connect() {
   const es = new EventSource("/api/stream");
   es.onopen = () => { $("conn").textContent = "live"; $("conn").className = "live"; };
@@ -208,7 +251,7 @@ $("f-status").addEventListener("change", () => render());
 (async () => {
   connect();  // subscribe first so nothing is missed while the history loads
   for (const a of await getJSON("/api/alerts?limit=300")) if (!alerts.has(a.id)) alerts.set(a.id, a);
-  render(); await refreshStats(); await refreshBlocked();
+  render(); await refreshStats(); await refreshBlocked(); await loadAttackPanel();
 })();
 </script>
 </body>

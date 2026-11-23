@@ -47,7 +47,7 @@ class Hub:
                 pass
 
 
-def make_handler(store, hub, engine, allowed_hosts):
+def make_handler(store, hub, engine, allowed_hosts, attacker=None):
     class Handler(BaseHTTPRequestHandler):
         server_version = "MiniSOC"
         sys_version = ""
@@ -94,6 +94,10 @@ def make_handler(store, hub, engine, allowed_hosts):
                 return self._send(200, stats)
             if url.path == "/api/blocked":
                 return self._send(200, store.list_blocked())
+            if url.path == "/api/attacks":
+                # The attack panel is an opt-in lab feature; off unless --attack-panel was passed.
+                return self._send(200, {"enabled": attacker is not None,
+                                        "scenarios": attacker.scenarios if attacker else []})
             if url.path == "/api/stream":
                 return self._stream()
             return self._send(404, {"error": "not found"})
@@ -104,20 +108,16 @@ def make_handler(store, hub, engine, allowed_hosts):
             # Requiring JSON forces a CORS preflight, which we never approve -> blocks CSRF.
             if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
                 return self._send(415, {"error": "Content-Type must be application/json"})
-            m = STATUS_PATH.match(urlparse(self.path).path)
+            path = urlparse(self.path).path
+            body = self._read_json()
+            if body is None:
+                return  # error already sent
+            if path == "/api/attack":
+                return self._attack(body)
+            m = STATUS_PATH.match(path)
             if not m:
                 return self._send(404, {"error": "not found"})
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-            except ValueError:
-                return self._send(400, {"error": "bad Content-Length"})
-            if length <= 0 or length > MAX_BODY:
-                return self._send(413, {"error": "body too large or empty"})
-            try:
-                body = json.loads(self.rfile.read(length))
-                status = body["status"]
-            except (ValueError, KeyError, TypeError):
-                return self._send(400, {"error": "expected {\"status\": ...}"})
+            status = body.get("status")
             if status not in VALID_STATUSES:
                 return self._send(400, {"error": f"status must be one of {list(VALID_STATUSES)}"})
             alert = store.set_status(int(m.group(1)), status)
@@ -125,6 +125,35 @@ def make_handler(store, hub, engine, allowed_hosts):
                 return self._send(404, {"error": "alert not found"})
             hub.publish("update", alert)
             return self._send(200, alert)
+
+        def _read_json(self):
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                self._send(400, {"error": "bad Content-Length"})
+                return None
+            if length <= 0 or length > MAX_BODY:
+                self._send(413, {"error": "body too large or empty"})
+                return None
+            try:
+                body = json.loads(self.rfile.read(length))
+            except ValueError:
+                self._send(400, {"error": "invalid JSON"})
+                return None
+            if not isinstance(body, dict):
+                self._send(400, {"error": "expected a JSON object"})
+                return None
+            return body
+
+        def _attack(self, body):
+            # Lab only: fires one bundled simulator scenario (writes log lines). No shell, no network.
+            if attacker is None:
+                return self._send(403, {"error": "attack panel is disabled (start with --attack-panel)"})
+            scenario = body.get("scenario")
+            if scenario not in attacker.scenarios:  # allow-list; no arbitrary input is ever executed
+                return self._send(400, {"error": "unknown scenario"})
+            attacker.run(scenario)
+            return self._send(200, {"ok": True, "scenario": scenario})
 
         def _stream(self):
             q = hub.subscribe()
@@ -174,6 +203,6 @@ class QuietServer(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
-def make_server(host, port, store, hub, engine):
+def make_server(host, port, store, hub, engine, attacker=None):
     allowed = allowed_hosts(host)
-    return QuietServer((host, port), make_handler(store, hub, engine, allowed))
+    return QuietServer((host, port), make_handler(store, hub, engine, allowed, attacker))

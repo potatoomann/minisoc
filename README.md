@@ -31,6 +31,7 @@ The server listens on IPv4 only, and `localhost` may try IPv6 first.
 |---|---|
 | `./run.sh` | Demo mode: simulator + dashboard on port 8000 |
 | `./run.sh --quiet` | Dashboard only, so you can fire attacks yourself |
+| `./run.sh --quiet --attack-panel` | Dashboard with an on-screen **Attack panel** (attack + defend together) |
 | `./run.sh --port 8080` | Use another port (any option is passed to `main.py`) |
 
 Fire one specific attack (in a second Kali terminal, while `./run.sh --quiet` runs):
@@ -76,6 +77,21 @@ On Windows, use `python main.py --demo` and `python` instead of `python3`.
 | PROC-005 | Privilege / user discovery | Low | T1033 System Owner/User Discovery |
 
 URLs are decoded twice before matching, so double-encoded payloads are still caught.
+
+## Attack panel (attack + defend at once)
+
+Run with `--attack-panel` to get a red **Attack panel** on the dashboard with a button for
+each attack. Click one and watch the alert appear live in the same screen — a self-contained
+"red team vs. blue team" demo:
+
+```bash
+./run.sh --quiet --attack-panel     # then open http://127.0.0.1:8000
+```
+
+The buttons only fire the **bundled simulator scenarios** (they write log lines — no real
+network traffic, no shell commands), the endpoint accepts allow-listed scenario names only,
+and the panel is **off unless you pass `--attack-panel`**, so a normal defensive run never
+exposes it. The real external brute force stays in the `sudo` CLI lab below, on purpose.
 
 ## Validate against a REAL attack (Kali)
 
@@ -161,6 +177,6 @@ cmdline, parent`, for example Sysmon Event ID 1 exported to JSON).
 - Implemented stateful correlation (brute force -> successful login escalated to critical),
   evasion-resistant counters and alert de-duplication to cut analyst noise.
 - Added simulated SOAR auto-containment (iptables/netsh) with internal-network allowlisting,
-  and a live SSE dashboard hardened against XSS, CSRF and DNS rebinding; covered by 27 tests.
+  and a live SSE dashboard hardened against XSS, CSRF and DNS rebinding; covered by 29 tests.
 - Validated detections against a real SSH brute force (hydra) on a Kali lab, ingesting live
   `journald`/`auth.log` events and scoring detection coverage with a repeatable scorecard.

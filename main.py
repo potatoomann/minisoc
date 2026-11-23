@@ -15,19 +15,23 @@ def main():
     ap.add_argument("--logs", default="logs", help="directory containing auth.log, web.log, process.log")
     ap.add_argument("--db", default="minisoc.db", help="SQLite database file")
     ap.add_argument("--demo", action="store_true", help="also run the built-in attack simulator")
+    ap.add_argument("--attack-panel", action="store_true",
+                    help="show an on-dashboard panel to fire attacks on demand (lab use)")
     args = ap.parse_args()
 
     stop = threading.Event()
     store = Store(args.db)
     hub = Hub()
     engine = Engine(store, args.logs, publish=hub.publish)
+    attacker = simulator.Attacker(args.logs) if args.attack_panel else None
 
     if args.demo:
         threading.Thread(target=simulator.run_forever, args=(args.logs,), kwargs={"stop": stop}, daemon=True).start()
     threading.Thread(target=engine.run, args=(stop,), daemon=True).start()
 
-    srv = make_server(args.host, args.port, store, hub, engine)
-    print(f"[minisoc] dashboard: http://{args.host}:{args.port}  (Ctrl+C to stop)", flush=True)
+    srv = make_server(args.host, args.port, store, hub, engine, attacker=attacker)
+    print(f"[minisoc] dashboard: http://{args.host}:{args.port}"
+          f"{'  [attack panel ON]' if attacker else ''}  (Ctrl+C to stop)", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

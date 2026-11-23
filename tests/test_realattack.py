@@ -1,13 +1,20 @@
-"""Tests for the real-SSH-log collector and the real-attack detection path."""
+"""Tests for the real-SSH-log collector, the real-attack detection path, and the attack panel."""
+import http.client
+import json
 import os
 import sys
+import tempfile
+import threading
 import unittest
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import simulator  # noqa: E402
 from collectors.ssh_collector import normalize_line  # noqa: E402
 from engine import Detector, parse_auth  # noqa: E402
+from server import Hub, make_server  # noqa: E402
+from store import Store  # noqa: E402
 
 
 class NormalizeTests(unittest.TestCase):
@@ -55,6 +62,45 @@ class RealAttackDetectionTests(unittest.TestCase):
         self.assertIn("AUTH-001", fired)   # brute force
         self.assertIn("AUTH-002", fired)   # compromise (success after brute force)
         self.assertEqual(next(a["severity"] for a in alerts if a["rule_id"] == "AUTH-002"), "critical")
+
+
+class AttackPanelTests(unittest.TestCase):
+    def _server(self, attacker):
+        srv = make_server("127.0.0.1", 0, Store(), Hub(), None, attacker=attacker)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        self.addCleanup(srv.server_close)
+        return srv.server_address[1]
+
+    def _req(self, port, method, path, body=None):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        headers = {"Content-Type": "application/json"} if body is not None else {}
+        c.request(method, path, body=body, headers=headers)
+        r = c.getresponse()
+        data = r.read()
+        c.close()
+        return r.status, (json.loads(data) if data else None)
+
+    def test_panel_disabled_by_default(self):
+        port = self._server(None)
+        status, info = self._req(port, "GET", "/api/attacks")
+        self.assertEqual(status, 200)
+        self.assertFalse(info["enabled"])
+        # firing is refused when disabled
+        self.assertEqual(self._req(port, "POST", "/api/attack", json.dumps({"scenario": "brute_force"}))[0], 403)
+
+    def test_panel_fires_known_scenario(self):
+        logs = tempfile.mkdtemp()
+        port = self._server(simulator.Attacker(logs))
+        status, info = self._req(port, "GET", "/api/attacks")
+        self.assertTrue(info["enabled"])
+        self.assertIn("brute_force", info["scenarios"])
+        # a known scenario fires and writes real log lines
+        self.assertEqual(self._req(port, "POST", "/api/attack", json.dumps({"scenario": "brute_force"}))[0], 200)
+        with open(os.path.join(logs, "auth.log")) as f:
+            self.assertIn("Failed password", f.read())
+        # an unknown scenario is rejected, never executed
+        self.assertEqual(self._req(port, "POST", "/api/attack", json.dumps({"scenario": "rm -rf /"}))[0], 400)
 
 
 if __name__ == "__main__":
