@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MiniSOC</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --line: #30363d; --text: #e6edf3; --muted: #8b949e;
+    --critical: #ff4d6d; --high: #ff8c42; --medium: #f5c542; --low: #4cc9f0; --ok: #3fb950;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: .5px; }
+  header h1 span { color: var(--critical); }
+  #conn { font-size: 12px; color: var(--muted); }
+  #conn::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
+  #conn.live::before { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  main { padding: 16px 20px; display: grid; gap: 16px; grid-template-columns: 1fr 320px; }
+  .kpis { grid-column: 1 / -1; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .kpi, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  .kpi { padding: 12px 14px; }
+  .kpi .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .l { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  .panel h2 { margin: 0; padding: 10px 14px; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); border-bottom: 1px solid var(--line); }
+  .scroll { max-height: 70vh; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; font-size: 12px; }
+  tr.new { animation: flash 1.5s ease-out; }
+  @keyframes flash { from { background: rgba(255,77,109,.25); } to { background: transparent; } }
+  .sev { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #000; }
+  .sev.critical { background: var(--critical); } .sev.high { background: var(--high); }
+  .sev.medium { background: var(--medium); } .sev.low { background: var(--low); }
+  .details { color: var(--muted); font-size: 12px; word-break: break-all; }
+  .mitre { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
+  .side { display: grid; gap: 16px; align-content: start; }
+  .bar { padding: 8px 14px; }
+  .bar .name { font-size: 12px; display: flex; justify-content: space-between; }
+  .bar .track { height: 6px; background: var(--bg); border-radius: 3px; margin-top: 4px; }
+  .bar .fill { height: 100%; background: var(--high); border-radius: 3px; }
+  .blk { padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 12px; }
+  .blk b { font-family: ui-monospace, Consolas, monospace; color: var(--critical); }
+  .empty { padding: 14px; color: var(--muted); font-size: 12px; }
+  .filters { display: flex; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mini<span>SOC</span></h1>
+  <div id="conn">connecting…</div>
+</header>
+<main>
+  <section class="kpis">
+    <div class="kpi"><div class="v" id="k-events">0</div><div class="l">Events processed</div></div>
+    <div class="kpi"><div class="v" id="k-total">0</div><div class="l">Alerts</div></div>
+    <div class="kpi"><div class="v" id="k-critical" style="color:var(--critical)">0</div><div class="l">Critical</div></div>
+    <div class="kpi"><div class="v" id="k-high" style="color:var(--high)">0</div><div class="l">High</div></div>
+    <div class="kpi"><div class="v" id="k-open">0</div><div class="l">Open</div></div>
+    <div class="kpi"><div class="v" id="k-blocked">0</div><div class="l">IPs blocked</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Live alert queue</h2>
+    <div class="filters">
+      <select id="f-sev"><option value="">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option></select>
+      <select id="f-status"><option value="">All statuses</option><option>open</option><option>investigating</option><option>closed</option></select>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Time</th><th>Severity</th><th>Alert</th><th>MITRE ATT&amp;CK</th><th>Source</th><th>#</th><th>Status</th></tr></thead>
+        <tbody id="alerts"></tbody>
+      </table>
+      <div class="empty" id="no-alerts">No alerts yet. Waiting for events…</div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <section class="panel"><h2>Top ATT&amp;CK techniques</h2><div id="mitre"><div class="empty">—</div></div></section>
+    <section class="panel"><h2>Automated response (blocked IPs)</h2><div id="blocked"><div class="empty">None</div></div></section>
+  </aside>
+</main>
+
+<script>
+const alerts = new Map();   // id -> alert
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(url + " " + r.status); return r.json(); }
+
+function rowFor(a, isNew) {
+  const tr = el("tr", isNew ? "new" : "");
+  tr.dataset.id = a.id;
+  tr.appendChild(el("td", "details", (a.last_seen || a.ts).replace("T", " ")));
+  const sevTd = el("td"); sevTd.appendChild(el("span", "sev " + a.severity, a.severity)); tr.appendChild(sevTd);
+  const t = el("td"); t.appendChild(el("div", "", a.title)); t.appendChild(el("div", "details", a.details)); tr.appendChild(t);
+  tr.appendChild(el("td", "mitre", a.mitre));
+  tr.appendChild(el("td", "mitre", a.source_ip || a.host || "—"));
+  tr.appendChild(el("td", "", String(a.count)));
+  const st = el("td"); const sel = el("select");
+  for (const s of ["open", "investigating", "closed"]) { const o = el("option", "", s); o.value = s; if (s === a.status) o.selected = true; sel.appendChild(o); }
+  sel.addEventListener("change", () => setStatus(a.id, sel.value));
+  st.appendChild(sel); tr.appendChild(st);
+  return tr;
+}
+
+function visible(a) {
+  const s = $("f-sev").value, st = $("f-status").value;
+  return (!s || a.severity === s) && (!st || a.status === st);
+}
+
+const MAX_ALERTS = 500;   // keep the browser bounded on long-running sessions
+
+function updateEmpty() { $("no-alerts").style.display = $("alerts").children.length ? "none" : "block"; }
+
+// Full rebuild: only on first load and when filters change.
+function render() {
+  const body = $("alerts"); body.replaceChildren();
+  for (const a of [...alerts.values()].sort((x, y) => y.id - x.id).filter(visible)) body.appendChild(rowFor(a, false));
+  updateEmpty();
+}
+
+// Incremental update for live events: touch only the affected row.
+function upsert(a, isNew) {
+  alerts.set(a.id, a);
+  if (alerts.size > MAX_ALERTS) {
+    const oldest = Math.min(...alerts.keys());
+    alerts.delete(oldest);
+    document.querySelector(`#alerts tr[data-id="${oldest}"]`)?.remove();
+  }
+  const body = $("alerts");
+  const existing = body.querySelector(`tr[data-id="${a.id}"]`);
+  if (!visible(a)) { existing?.remove(); updateEmpty(); return; }
+  if (existing) {
+    if (existing.contains(document.activeElement)) return;  // analyst is using this row's dropdown
+    existing.replaceWith(rowFor(a, false));
+  } else {
+    let before = null;  // keep newest-first order
+    for (const tr of body.children) if (Number(tr.dataset.id) < a.id) { before = tr; break; }
+    body.insertBefore(rowFor(a, isNew), before);
+  }
+  updateEmpty();
+}
+
+async function setStatus(id, status) {
+  const r = await fetch(`/api/alerts/${id}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+  if (r.ok) { upsert(await r.json(), false); return; }
+  // Revert the dropdown to the server's truth.
+  const row = $("alerts").querySelector(`tr[data-id="${id}"]`);
+  if (row && alerts.has(id)) { row.querySelector("select")?.blur(); row.replaceWith(rowFor(alerts.get(id), false)); }
+  alert("Could not update status");
+}
+
+async function refreshStats() {
+  const s = await getJSON("/api/stats");
+  $("k-events").textContent = s.events_processed.toLocaleString();
+  $("k-total").textContent = s.total_alerts;
+  $("k-critical").textContent = s.by_severity.critical || 0;
+  $("k-high").textContent = s.by_severity.high || 0;
+  $("k-open").textContent = s.by_status.open || 0;
+  $("k-blocked").textContent = s.blocked_ips;
+  const box = $("mitre"); box.replaceChildren();
+  const max = Math.max(1, ...s.top_mitre.map(m => m.count));
+  if (!s.top_mitre.length) box.appendChild(el("div", "empty", "—"));
+  for (const m of s.top_mitre) {
+    const b = el("div", "bar"); const n = el("div", "name");
+    n.appendChild(el("span", "mitre", m.technique)); n.appendChild(el("span", "", String(m.count)));
+    const tr = el("div", "track"); const f = el("div", "fill"); f.style.width = (100 * m.count / max) + "%";
+    tr.appendChild(f); b.appendChild(n); b.appendChild(tr); box.appendChild(b);
+  }
+}
+
+async function refreshBlocked() {
+  const list = await getJSON("/api/blocked");
+  const box = $("blocked"); box.replaceChildren();
+  if (!list.length) box.appendChild(el("div", "empty", "None"));
+  for (const b of list) {
+    const d = el("div", "blk"); d.appendChild(el("b", "", b.ip));
+    d.appendChild(el("div", "details", b.reason + " · " + b.ts.replace("T", " "))); box.appendChild(d);
+  }
+}
+
+let statsTimer = null;
+function scheduleStats() { clearTimeout(statsTimer); statsTimer = setTimeout(() => refreshStats().catch(() => {}), 300); }
+
+function connect() {
+  const es = new EventSource("/api/stream");
+  es.onopen = () => { $("conn").textContent = "live"; $("conn").className = "live"; };
+  es.onerror = () => { $("conn").textContent = "reconnecting…"; $("conn").className = ""; };
+  es.addEventListener("alert", (e) => { upsert(JSON.parse(e.data), true); scheduleStats(); });
+  es.addEventListener("update", (e) => { upsert(JSON.parse(e.data), false); scheduleStats(); });
+  es.addEventListener("block", () => { refreshBlocked().catch(() => {}); scheduleStats(); });
+  // Pushed by the engine whenever new log lines are processed: no polling needed.
+  es.addEventListener("events", (e) => { $("k-events").textContent = JSON.parse(e.data).events_processed.toLocaleString(); });
+}
+
+$("f-sev").addEventListener("change", () => render());
+$("f-status").addEventListener("change", () => render());
+
+(async () => {
+  connect();  // subscribe first so nothing is missed while the history loads
+  for (const a of await getJSON("/api/alerts?limit=300")) if (!alerts.has(a.id)) alerts.set(a.id, a);
+  render(); await refreshStats(); await refreshBlocked();
+})();
+</script>
+</body>
+</html>
