@@ -33,6 +33,14 @@ class NormalizeTests(unittest.TestCase):
         self.assertTrue(out.startswith("2026-11-23T10:00:00 kali sshd[22]: Accepted password"))
         self.assertEqual(parse_auth(out)["action"], "accepted")
 
+    def test_openssh_sshd_session_process(self):
+        # OpenSSH 9.8+ logs auth under "sshd-session", not "sshd" (this broke real Kali capture).
+        line = "2026-11-23T22:29:24+05:30 kali sshd-session[1856]: Accepted password for socdemo from 127.0.0.1 port 46132 ssh2"
+        out = normalize_line(line)
+        self.assertIsNotNone(out)
+        self.assertIn("sshd[1856]:", out)  # normalised back to a plain sshd[...] line
+        self.assertEqual(parse_auth(out)["action"], "accepted")
+
     def test_invalid_user_kept(self):
         self.assertIsNotNone(normalize_line(
             "2026-11-23T10:00:00 kali sshd[1]: Failed password for invalid user oracle from 10.0.0.9 port 5 ssh2"))

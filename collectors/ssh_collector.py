@@ -22,13 +22,15 @@ import sys
 import time
 from datetime import datetime
 
+# Accept both "sshd" and OpenSSH 9.8+'s per-connection "sshd-session" / "sshd-auth" process.
+_PROG = r"sshd(?:-\w+)?"
 # journald short-iso: "2026-11-23T10:00:00+0530 host sshd[pid]: msg"
 # traditional syslog:  "Nov 23 10:00:00 host sshd[pid]: msg"
 ISO_LINE = re.compile(
-    r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\S*)\s+(?P<host>\S+)\s+sshd(?:\[(?P<pid>\d+)\])?:\s+(?P<msg>.*)$")
+    r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\S*)\s+(?P<host>\S+)\s+" + _PROG + r"(?:\[(?P<pid>\d+)\])?:\s+(?P<msg>.*)$")
 SYSLOG_LINE = re.compile(
     r"^(?P<mon>[A-Z][a-z]{2})\s+(?P<day>\d{1,2})\s+(?P<time>\d{2}:\d{2}:\d{2})\s+(?P<host>\S+)\s+"
-    r"sshd(?:\[(?P<pid>\d+)\])?:\s+(?P<msg>.*)$")
+    + _PROG + r"(?:\[(?P<pid>\d+)\])?:\s+(?P<msg>.*)$")
 MONTHS = {m: i for i, m in enumerate(
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
 
@@ -74,7 +76,8 @@ def iter_journal(follow):
     regardless of which unit they were logged under, which is the reliable source on
     WSL/Kali. The unit filters are fallbacks.
     """
-    for selector in (["_COMM=sshd"], ["-u", "ssh"], ["-u", "sshd"]):
+    # OpenSSH 9.8+ logs auth under sshd-session/sshd-auth; match all of them (same-field matches are OR'd).
+    for selector in (["_COMM=sshd", "_COMM=sshd-session", "_COMM=sshd-auth"], ["-u", "ssh"], ["-u", "sshd"]):
         cmd = ["journalctl", *selector, "-o", "short-iso", "--no-pager"]
         if follow:
             cmd.append("-f")
