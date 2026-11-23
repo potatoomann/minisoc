@@ -47,10 +47,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[lab] ensuring openssh-server and hydra are installed..."
-if ! command -v sshd >/dev/null || ! command -v hydra >/dev/null; then
+echo "[lab] ensuring openssh-server, hydra and sshpass are installed..."
+if ! command -v sshd >/dev/null || ! command -v hydra >/dev/null || ! command -v sshpass >/dev/null; then
     apt-get update -qq
-    apt-get install -y -qq openssh-server hydra
+    apt-get install -y -qq openssh-server hydra sshpass
 fi
 
 echo "[lab] starting ssh service..."
