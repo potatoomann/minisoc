@@ -68,9 +68,14 @@ def normalize_line(line, now=None):
 
 
 def iter_journal(follow):
-    """Yield raw sshd lines from journald. Tries the 'ssh' then 'sshd' unit."""
-    for unit in ("ssh", "sshd"):
-        cmd = ["journalctl", "-u", unit, "-o", "short-iso", "--no-pager"]
+    """Yield raw sshd lines from journald.
+
+    `_COMM=sshd` is tried first: it catches sshd's auth messages ("Failed password")
+    regardless of which unit they were logged under, which is the reliable source on
+    WSL/Kali. The unit filters are fallbacks.
+    """
+    for selector in (["_COMM=sshd"], ["-u", "ssh"], ["-u", "sshd"]):
+        cmd = ["journalctl", *selector, "-o", "short-iso", "--no-pager"]
         if follow:
             cmd.append("-f")
         else:
@@ -87,7 +92,7 @@ def iter_journal(follow):
         finally:
             proc.terminate()
         if got or follow:
-            return  # this unit produced output; don't double-read the other name
+            return  # this selector produced output (or we're following it); don't try the rest
 
 
 def iter_file(path, follow):
