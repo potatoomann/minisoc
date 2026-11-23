@@ -6,6 +6,11 @@ de-duplicates alerts, automatically "blocks" malicious IPs (simulated SOAR), and
 everything to a live analyst dashboard. Built and tested on **Kali Linux (WSL 2)**; also
 runs on Windows.
 
+![MiniSOC dashboard](docs/dashboard.png)
+
+*Live dashboard: alert queue with MITRE ATT&CK mapping, severity KPIs, automated IP blocking,
+an ATT&CK technique heatmap, and a built-in attack panel for attack-and-defend demos.*
+
 ```
  auth.log ----+
  web.log  ----+--> Tailer --> Parser --> Detector (12 rules) --> Dedup --> SQLite --> SSE --> Dashboard
