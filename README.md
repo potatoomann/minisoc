@@ -77,6 +77,41 @@ On Windows, use `python main.py --demo` and `python` instead of `python3`.
 
 URLs are decoded twice before matching, so double-encoded payloads are still caught.
 
+## Validate against a REAL attack (Kali)
+
+The simulator proves the *logic*; this proves MiniSOC detects a **real** attack on real logs.
+It runs a genuine SSH brute force against **your own machine's loopback** (`127.0.0.1` only,
+hard-coded) and scores what MiniSOC caught. Only run it on a machine you own.
+
+Open three Kali terminals in the project folder:
+
+```bash
+# 1. dashboard
+./run.sh --quiet
+
+# 2. feed real SSH logs into MiniSOC
+python3 collectors/ssh_collector.py
+
+# 3. run the brute-force lab against your own SSH, then clean up
+sudo ./lab/attack_lab.sh
+```
+
+Then grade it:
+
+```bash
+python3 scorecard.py --ssh-lab
+```
+
+You should see **AUTH-001** (real brute force) and **AUTH-002** (critical: a real successful
+login right after the brute force). The dashboard shows the same alerts live, now driven by
+real `sshd` events instead of the simulator.
+
+- **`collectors/ssh_collector.py`** reads real sshd events from journald or `/var/log/auth.log`,
+  normalises them, and appends to the log MiniSOC tails. Point it at any Linux host's SSH logs.
+- **`lab/attack_lab.sh`** installs `openssh-server` + `hydra`, creates a throwaway `socdemo`
+  user, brute-forces `127.0.0.1`, logs in once, then deletes the user.
+- **`scorecard.py`** turns the alert queue into a pass/fail detection summary.
+
 ## Features
 
 - **Real-time ingestion**: `tail -f` style followers that handle partial lines and log rotation.
@@ -91,6 +126,8 @@ URLs are decoded twice before matching, so double-encoded payloads are still cau
 - **Analyst workflow**: alert status open / investigating / closed, with severity and status filters.
 - **Live dashboard**: Server-Sent Events, KPIs, top ATT&CK techniques, blocked IP list.
 - **Real log formats**: ISO timestamps and standard Apache/Nginx access-log dates.
+- **Real-attack validation**: a Kali lab that brute-forces your own SSH and scores detection
+  against real `sshd` logs, not just simulated traffic.
 
 ## Security of the tool itself
 
@@ -111,10 +148,10 @@ cmdline, parent`, for example Sysmon Event ID 1 exported to JSON).
 
 ## Ideas for next steps
 
-- Watch Kali's real SSH logins (`journalctl -u ssh -o short-iso -f`) and attack it with `hydra`.
 - Load rules from Sigma YAML files instead of Python.
 - Enrichment with GeoIP / AbuseIPDB reputation.
 - Slack or email notification for critical alerts.
+- Cross-check detections against Wazuh or Splunk on the same attack.
 
 ## Resume bullets
 
@@ -124,4 +161,6 @@ cmdline, parent`, for example Sysmon Event ID 1 exported to JSON).
 - Implemented stateful correlation (brute force -> successful login escalated to critical),
   evasion-resistant counters and alert de-duplication to cut analyst noise.
 - Added simulated SOAR auto-containment (iptables/netsh) with internal-network allowlisting,
-  and a live SSE dashboard hardened against XSS, CSRF and DNS rebinding; covered by 22 tests.
+  and a live SSE dashboard hardened against XSS, CSRF and DNS rebinding; covered by 27 tests.
+- Validated detections against a real SSH brute force (hydra) on a Kali lab, ingesting live
+  `journald`/`auth.log` events and scoring detection coverage with a repeatable scorecard.
