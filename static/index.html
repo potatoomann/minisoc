@@ -34,6 +34,7 @@
   .sev.critical { background: var(--critical); } .sev.high { background: var(--high); }
   .sev.medium { background: var(--medium); } .sev.low { background: var(--low); }
   .details { color: var(--muted); font-size: 12px; word-break: break-all; }
+  .time { white-space: nowrap; word-break: normal; font-variant-numeric: tabular-nums; }
   .mitre { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
   select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
   .side { display: grid; gap: 16px; align-content: start; }
@@ -94,7 +95,11 @@ async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new E
 function rowFor(a, isNew) {
   const tr = el("tr", isNew ? "new" : "");
   tr.dataset.id = a.id;
-  tr.appendChild(el("td", "details", (a.last_seen || a.ts).replace("T", " ")));
+  // Show just the time; the full date is in the tooltip.
+  const when = a.last_seen || a.ts;
+  const timeTd = el("td", "details time", when.includes("T") ? when.split("T")[1] : when);
+  timeTd.title = when.replace("T", " ");
+  tr.appendChild(timeTd);
   const sevTd = el("td"); sevTd.appendChild(el("span", "sev " + a.severity, a.severity)); tr.appendChild(sevTd);
   const t = el("td"); t.appendChild(el("div", "", a.title)); t.appendChild(el("div", "details", a.details)); tr.appendChild(t);
   tr.appendChild(el("td", "mitre", a.mitre));

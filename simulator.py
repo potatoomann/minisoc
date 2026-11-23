@@ -139,7 +139,7 @@ def normal_traffic(w):
         w.web(random.choice(INTERNAL_IPS), random.choice(NORMAL_PATHS), random.choice([200, 200, 200, 304, 404]))
     elif choice < 0.6:
         w.auth("sshd", f"Accepted publickey for {random.choice(USERS)} from {random.choice(INTERNAL_IPS)} port 22 ssh2")
-    elif choice < 0.7:
+    elif choice < 0.63:  # occasional typo by a real user: rare enough not to look like brute force
         w.auth("sshd", f"Failed password for {random.choice(USERS)} from {random.choice(INTERNAL_IPS)} port 22 ssh2")
     else:
         image, cmd = random.choice(NORMAL_PROCS)
